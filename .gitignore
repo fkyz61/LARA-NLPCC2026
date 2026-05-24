@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# Virtual envs
+venv/
+.venv/
+env/
+
+# Data & checkpoints (do NOT commit any internal data)
+data/
+checkpoints/
+runs/
+logs/
+wandb/
+*.ckpt
+*.pt
+*.pth
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Privacy: never commit anything that could deanonymize
+*.local
+*.env
+.env*
+*_personal*
