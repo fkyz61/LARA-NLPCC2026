@@ -30,25 +30,26 @@ parameter update.
 
 ```
 .
-├── README.md                  ← this file
-├── requirements.txt           ← Python dependencies
-├── LICENSE                    ← MIT (anonymized)
+├── README.md                   ← this file
+├── requirements.txt            ← Python dependencies
+├── LICENSE                     ← MIT (anonymized)
 ├── configs/
-│   ├── lara_industrial.yaml   ← hyper-parameters for the industrial dataset
-│   └── lara_uci.yaml          ← hyper-parameters for UCI Census-Income
+│   ├── lara_industrial.yaml    ← hyper-parameters for the industrial dataset
+│   ├── lara_uci.yaml           ← hyper-parameters for UCI Census-Income
+│   └── industrial_schema.md    ← schema description of the proprietary dataset
 ├── src/
 │   ├── __init__.py
-│   ├── coordinator.py         ← Coordinator Network + Collaboration Weight Matrix
-│   ├── gated_fusion.py        ← Personalized Gated Fusion module
-│   ├── gradient_summary.py    ← Per-layer cosine + log-norm gradient summary
-│   ├── llm_encoder.py         ← Frozen LLM task-embedding utilities
-│   ├── mmoe_backbone.py       ← Shared MMoE backbone used by all baselines
-│   ├── lara_trainer.py        ← End-to-end training loop with LARA
-│   └── utils.py               ← Logging / metrics / config loading
+│   ├── coordinator.py          ← Coordinator Network + Collaboration Weight Matrix
+│   ├── gated_fusion.py         ← Personalized Gated Fusion module
+│   ├── gradient_summary.py     ← Per-layer cosine + log-norm gradient summary
+│   ├── llm_encoder.py          ← Frozen LLM task-embedding utilities
+│   ├── mmoe_backbone.py        ← Shared MMoE backbone used by all baselines
+│   ├── lara_trainer.py         ← End-to-end training loop with LARA
+│   └── utils.py                ← Logging / metrics / config loading
 └── scripts/
-    ├── prepare_uci.py         ← Download and preprocess UCI Census-Income
-    ├── run_uci.sh             ← Reproduce the UCI Census-Income experiment
-    └── run_industrial.sh      ← Template for the proprietary industrial dataset
+    ├── prepare_uci.py          ← Download and preprocess UCI Census-Income (KDD)
+    ├── run_uci.sh              ← Reproduce the UCI Census-Income experiment
+    └── run_industrial.sh       ← Template for the proprietary industrial dataset
 ```
 
 ---
@@ -70,11 +71,13 @@ proprietary (see Section 5 below).
 
 ## 4. Reproducing the UCI Census-Income Results
 
-UCI Census-Income is the only fully-public benchmark used in the paper.
-The following commands reproduce **Table 1(b)** of the manuscript.
+UCI Census-Income (KDD), dataset id 117 on the UCI ML Repository, is the
+only fully-public benchmark used in the paper. The following commands
+reproduce **Table 1(b)** of the manuscript.
 
 ```bash
-# Step 1: download and preprocess the UCI Census-Income dataset (~10 MB).
+# Step 1: download and preprocess UCI Census-Income (~10 MB).
+# The script uses the official `ucimlrepo` package; no manual download needed.
 python scripts/prepare_uci.py --out_dir ./data/uci
 
 # Step 2: train LARA with the released hyper-parameters
@@ -89,6 +92,12 @@ Expected output (mean over 5 seeds, ~30 minutes on a single GPU):
 | DRGrad | 0.9550    | 0.9949    |
 | **LARA (Ours)** | **0.9563** | **0.9952** |
 
+> *Baselines (SNR, PLE, PCGrad, CAGrad, AdaTask) share the same
+> `MMoEBackbone` and can be reproduced by substituting the corresponding
+> gradient-coordination rule for the LARA Coordinator + Gating modules
+> in `src/lara_trainer.py`. The relevant references are listed in the
+> paper's bibliography; their public implementations are widely available.*
+
 Hyper-parameter grids and ablation switches are exposed in
 `configs/lara_uci.yaml`. Set `coordinator.use_llm: false` to obtain the
 *w/o LLM Semantic* row of Table 3; set `coordinator.use_user_context: false`
@@ -100,9 +109,9 @@ to obtain *w/o user conditioning*; and so on.
 
 The 15B-sample industrial dataset used for Table 1(a), Table 2, Table 3,
 and Figure 4 originates from a live short-form video application
-operated by the (anonymized) submitting institution. Due to commercial
-sensitivity and user-privacy constraints, the raw data **cannot** be
-released. We instead provide:
+operated by the authors' affiliated institution (anonymized for review).
+Due to commercial sensitivity and user-privacy constraints, the raw data
+**cannot** be released. We instead provide:
 
 - `scripts/run_industrial.sh` — the exact launcher used for the
   production experiments. It expects a parquet directory with the same
@@ -112,6 +121,10 @@ released. We instead provide:
 - A *schema description* in `configs/industrial_schema.md` listing the
   expected feature columns and label columns, so that any practitioner
   with a comparable internal dataset can reproduce the model exactly.
+
+Plot-generation scripts for Figures 1-4 are omitted from this release
+since they depend on industrial-data artifacts; the algorithmic
+implementation is fully covered by the modules under `src/`.
 
 The UCI Census-Income reproduction in Section 4 above is therefore the
 primary public reproducibility artifact and is sufficient to verify
@@ -131,5 +144,5 @@ institution information in the camera-ready version.
 ## 7. Contact
 
 For the duration of the double-blind review, all correspondence should
-be conducted through the NLPCC 2026 submission system. The author
-contact information will be made available in the camera-ready version.
+be routed through the conference submission system. Author contact
+information will be made available in the camera-ready version.
