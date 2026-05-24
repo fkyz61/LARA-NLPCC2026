@@ -1,8 +1,11 @@
-"""Download and preprocess the UCI Census-Income dataset.
+"""Download and preprocess the UCI Census-Income (KDD) dataset (id=117).
 
 Two binary tasks per the paper:
     T1 = income > $50K
     T2 = never-married
+
+Uses the official `ucimlrepo` Python package to fetch the canonical
+data, avoiding hard-coded URLs that may break.
 
 Saves x/p/y train/val tensors to `out_dir` consumable by lara_trainer.
 """
@@ -10,42 +13,12 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from urllib.request import urlretrieve
 
 import numpy as np
 import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-
-UCI_URL_TRAIN = "https://archive.ics.uci.edu/static/public/117/data.csv"
-
-COLUMNS = [
-    "age", "class_of_worker", "industry_code", "occupation_code",
-    "education", "wage_per_hour", "enrolled_in_edu", "marital_status",
-    "major_industry", "major_occupation", "race", "hispanic_origin",
-    "sex", "labor_union", "unemployment_reason", "employment_status",
-    "capital_gains", "capital_losses", "dividends_from_stocks",
-    "tax_filer_status", "previous_region", "previous_state",
-    "household_status", "household_summary", "weight", "migration_msa",
-    "migration_reg", "migration_within_reg", "live_one_year",
-    "previous_sunbelt", "num_persons_employer", "family_under_18",
-    "country_father", "country_mother", "country_self", "citizenship",
-    "self_employed", "veteran_admin", "veteran_benefits", "weeks_worked",
-    "year", "income",
-]
-
-CATEGORICAL = [
-    "class_of_worker", "education", "enrolled_in_edu", "marital_status",
-    "major_industry", "major_occupation", "race", "hispanic_origin",
-    "sex", "labor_union", "unemployment_reason", "employment_status",
-    "tax_filer_status", "previous_region", "previous_state",
-    "household_status", "household_summary", "migration_msa",
-    "migration_reg", "migration_within_reg", "live_one_year",
-    "previous_sunbelt", "family_under_18", "country_father",
-    "country_mother", "country_self", "citizenship", "self_employed",
-    "veteran_admin",
-]
 
 
 def main():
@@ -54,43 +27,63 @@ def main():
     args = parser.parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    raw = args.out_dir / "raw.csv"
-    if not raw.exists():
-        print(f"Downloading UCI Census-Income to {raw}")
-        urlretrieve(UCI_URL_TRAIN, raw)
+    # ── Fetch via the official UCI ML Repository client ───────────────
+    try:
+        from ucimlrepo import fetch_ucirepo
+    except ImportError as e:
+        raise SystemExit(
+            "ucimlrepo is required. Install with: pip install ucimlrepo"
+        ) from e
 
-    df = pd.read_csv(raw, header=None, names=COLUMNS, skipinitialspace=True)
-    df = df.dropna()
+    print("Fetching UCI Census-Income (KDD), dataset id 117 ...")
+    bundle = fetch_ucirepo(id=117)
+    df_x: pd.DataFrame = bundle.data.features
+    df_y: pd.DataFrame = bundle.data.targets
 
-    # Two binary labels.
-    y1 = (df["income"].str.strip() == "50000+.").astype(int).values
-    y2 = (df["marital_status"].str.contains("Never married",
-                                            case=False)).astype(int).values
+    # Combine features and target so we can access the marital column.
+    df = pd.concat([df_x, df_y], axis=1).dropna()
+    print(f"Loaded {len(df):,} rows, {len(df.columns)} columns.")
+
+    # ── Two binary labels (paper Section 4.1) ─────────────────────────
+    # Target column name in ucimlrepo is "income".
+    target_col = df_y.columns[0]
+    y1 = (df[target_col].astype(str).str.strip() == "50000+.").astype(int).values
+
+    marital_candidates = [c for c in df.columns
+                          if "marital" in c.lower() or "marri" in c.lower()]
+    if not marital_candidates:
+        raise RuntimeError("Could not find a marital-status column in the dataset.")
+    marital_col = marital_candidates[0]
+    y2 = (df[marital_col].astype(str)
+                    .str.contains("Never married", case=False, na=False)).astype(int).values
     y = np.stack([y1, y2], axis=1)
 
-    # Build feature matrix: one-hot categoricals + standardized continuous.
-    cat = pd.get_dummies(df[CATEGORICAL], dummy_na=False).values.astype(np.float32)
-    cont_cols = [c for c in df.columns
-                 if c not in CATEGORICAL + ["income", "marital_status"]]
-    cont = df[cont_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).values
-    cont = StandardScaler().fit_transform(cont).astype(np.float32)
-    X = np.concatenate([cat, cont], axis=1)
+    drop_cols = {target_col, marital_col}
+    feature_df = df.drop(columns=list(drop_cols))
 
-    # User-context vector p_u: simple 16-d projection of age, sex (one-hot),
-    # weeks_worked, capital_gains, capital_losses, dividends, etc.
-    pu_cols = ["age", "weeks_worked", "capital_gains", "capital_losses",
-               "dividends_from_stocks", "num_persons_employer", "weight",
-               "wage_per_hour"]
-    pu = df[pu_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).values
-    pu = StandardScaler().fit_transform(pu).astype(np.float32)
-    # Pad to 16 dims.
-    pu = np.concatenate([pu, np.zeros((pu.shape[0], 16 - pu.shape[1]),
+    # ── Build feature matrix: one-hot categoricals + standardized continuous
+    cat_cols = feature_df.select_dtypes(include=["object", "category"]).columns.tolist()
+    num_cols = [c for c in feature_df.columns if c not in cat_cols]
+
+    cat = pd.get_dummies(feature_df[cat_cols], dummy_na=False).values.astype(np.float32)
+    num = feature_df[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0).values
+    num = StandardScaler().fit_transform(num).astype(np.float32)
+    X = np.concatenate([cat, num], axis=1)
+    print(f"Feature matrix: {X.shape}")
+
+    # ── User-context vector p_u: 16-d projection over numeric columns ─
+    # Pick up to 8 numeric columns, standardize, pad to 16-d to match the
+    # `user_ctx_dim: 16` setting in configs/lara_uci.yaml.
+    pu_src = num[:, :8] if num.shape[1] >= 8 else num
+    pu_src = np.concatenate([pu_src,
+                              np.zeros((pu_src.shape[0], 16 - pu_src.shape[1]),
                                        dtype=np.float32)], axis=1)
 
+    # 60/40 train/val split (paper uses 60/20/20 with separate test;
+    # for the public reproduction we keep a single 60/40 split).
     x_tr, x_va, p_tr, p_va, y_tr, y_va = train_test_split(
-        X, pu, y, test_size=0.4, random_state=42, stratify=y[:, 0]
+        X, pu_src, y, test_size=0.4, random_state=42, stratify=y[:, 0]
     )
-    # 60/20/20 -> here we keep 60/40 split; for val/test users can re-split.
 
     torch.save(torch.from_numpy(x_tr), args.out_dir / "x_train.pt")
     torch.save(torch.from_numpy(x_va), args.out_dir / "x_val.pt")
@@ -102,6 +95,9 @@ def main():
     print(f"Saved tensors to {args.out_dir}")
     print(f"Train: x={x_tr.shape} p={p_tr.shape} y={y_tr.shape}")
     print(f"Val:   x={x_va.shape} p={p_va.shape} y={y_va.shape}")
+    print()
+    print("NOTE: in_dim in configs/lara_uci.yaml may need to be set to "
+          f"{X.shape[1]} (the actual one-hot dimension after preprocessing).")
 
 
 if __name__ == "__main__":
