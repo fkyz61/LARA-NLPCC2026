@@ -8,8 +8,13 @@ device: cuda
 # Data
 data:
   dir: ./data/uci
-in_dim: 499                # one-hot + standardized continuous features
-user_ctx_dim: 16           # low-dim user context derived in prepare_uci.py
+
+# NOTE: in_dim depends on the actual one-hot dimension produced by
+# scripts/prepare_uci.py and varies slightly with the ucimlrepo column
+# layout. The script prints the exact value after preprocessing; update
+# the field below to match before launching training.
+in_dim: 499
+user_ctx_dim: 16
 n_tasks: 2
 
 # Optimization (per Section 4.1 of the paper)
