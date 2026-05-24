@@ -1,0 +1,44 @@
+# LARA configuration for UCI Census-Income (Table 1(b) of the paper).
+#
+# Two binary tasks: (T1) income > $50K, (T2) never-married.
+
+seed: 42
+device: cuda
+
+# Data
+data:
+  dir: ./data/uci
+in_dim: 499                # one-hot + standardized continuous features
+user_ctx_dim: 16           # low-dim user context derived in prepare_uci.py
+n_tasks: 2
+
+# Optimization (per Section 4.1 of the paper)
+batch_size: 4096
+epochs: 2
+lr: 0.001
+log_every: 50
+
+# LARA internal dimension d (paper uses 64)
+d_model: 64
+
+# Frozen LLM encoder
+llm_model: meta-llama/Llama-2-7b-hf
+llm_cache: ./data/uci/llm_task_emb.pt
+
+# One natural-language description per task (Section 3.3).
+task_descriptions:
+  - "predict whether an individual's annual income exceeds 50,000 US dollars"
+  - "predict whether an individual has never been married"
+
+# Backbone
+n_experts: 8
+
+# Coordinator MLP (Section 3.5)
+coordinator:
+  hidden: [512, 256]
+  use_llm: true              # set false for w/o LLM Semantic ablation
+  use_user_context: true     # set false for w/o user conditioning ablation
+
+# Gating network (Section 3.6)
+gate:
+  hidden: [128, 64]

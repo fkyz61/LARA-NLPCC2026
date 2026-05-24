@@ -1,0 +1,50 @@
+# LARA configuration for the 15B-sample industrial dataset
+# (Table 1(a), Table 2, Table 3, Figure 4 of the paper).
+#
+# IMPORTANT: the industrial dataset itself is proprietary and cannot be
+# released. This config records the exact production hyper-parameters so
+# that any practitioner with a comparable internal dataset
+# (5 binary user-behavior tasks over a shared-bottom MMoE backbone) can
+# reproduce the model.
+
+seed: 42
+device: cuda
+
+data:
+  dir: /path/to/internal/parquet/shards   # set in your environment
+in_dim: 1024
+user_ctx_dim: 64
+n_tasks: 5
+
+# Optimization (Section 4.1)
+batch_size: 4096
+epochs: 2
+lr: 0.001
+log_every: 1000
+
+d_model: 64
+
+# LLM encoder for task embeddings
+llm_model: meta-llama/Llama-2-7b-hf
+llm_cache: /path/to/internal/cache/llm_task_emb.pt
+
+# Five natural-language task descriptions used in the paper.
+task_descriptions:
+  - "predict user click-through rate on short-form video"
+  - "estimate total watch-dwell time per session"
+  - "predict business conversion event for the user"
+  - "predict the first auxiliary engagement signal (engagement_1)"
+  - "predict the second auxiliary engagement signal (engagement_2)"
+
+# Backbone
+n_experts: 8
+
+# Coordinator MLP
+coordinator:
+  hidden: [512, 256]
+  use_llm: true
+  use_user_context: true
+
+# Gating network
+gate:
+  hidden: [128, 64]
